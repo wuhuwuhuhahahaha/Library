@@ -4,6 +4,7 @@ import cn.whpu.library.dto.ApiResponse;
 import cn.whpu.library.dto.BorrowRequest;
 import cn.whpu.library.entity.Book;
 import cn.whpu.library.service.BookService;
+import cn.whpu.library.service.BorrowService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
@@ -16,6 +17,9 @@ public class BookController {
     
     @Autowired
     private BookService bookService;
+    
+    @Autowired
+    private BorrowService borrowService;
     
     @GetMapping("/book")
     public ApiResponse<Map<String, Object>> getBooks(
@@ -85,11 +89,23 @@ public class BookController {
     @PostMapping("/borrow")
     public ApiResponse<Void> borrowBook(@RequestBody BorrowRequest request) {
         try {
-            if (bookService.borrowBook(request.getBookName())) {
-                return ApiResponse.success(null);
-            } else {
+            // 先检查图书是否存在且库存充足
+            Book book = bookService.getBookByName(request.getBookName());
+            if (book == null || book.getStock() <= 0) {
                 return ApiResponse.error("借书失败，库存不足或图书不存在");
             }
+            
+            // 减少库存
+            if (!bookService.borrowBook(request.getBookName())) {
+                return ApiResponse.error("借书失败");
+            }
+            
+            // 创建借阅记录
+            if (!borrowService.createBorrow(request.getUserName(), request.getBookName())) {
+                return ApiResponse.error("创建借阅记录失败");
+            }
+            
+            return ApiResponse.success(null);
         } catch (Exception e) {
             return ApiResponse.error(e.getMessage());
         }
