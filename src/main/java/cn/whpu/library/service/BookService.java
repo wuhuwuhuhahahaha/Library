@@ -4,6 +4,7 @@ import cn.whpu.library.entity.Book;
 import cn.whpu.library.mapper.BookMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.HashMap;
 import java.util.List;
@@ -63,10 +64,11 @@ public class BookService {
         return bookMapper.deleteById(id) > 0;
     }
     
+    @Transactional(rollbackFor = Exception.class)
     public boolean borrowBook(String bookName) {
         Book book = bookMapper.findByName(bookName);
         if (book == null || book.getStock() <= 0) {
-            return false;
+            throw new RuntimeException("图书不存在或库存不足");
         }
         return bookMapper.decreaseStock(bookName) > 0;
     }

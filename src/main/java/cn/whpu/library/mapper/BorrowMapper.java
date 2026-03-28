@@ -10,16 +10,16 @@ public interface BorrowMapper {
     @Select("SELECT * FROM borrow")
     List<Borrow> findAll();
     
-    @Select("SELECT * FROM borrow WHERE username = #{username}")
+    @Select("SELECT * FROM borrow WHERE user_name = #{username}")
     List<Borrow> findByUsername(String username);
     
     @Select("SELECT * FROM borrow WHERE book_name = #{bookName}")
     List<Borrow> findByBookName(String bookName);
     
-    @Select("SELECT * FROM borrow WHERE username LIKE CONCAT('%', #{username}, '%') AND book_name LIKE CONCAT('%', #{bookName}, '%')")
+    @Select("SELECT * FROM borrow WHERE user_name LIKE CONCAT('%', #{username}, '%') AND book_name LIKE CONCAT('%', #{bookName}, '%')")
     List<Borrow> findByCondition(@Param("username") String username, @Param("bookName") String bookName);
     
-    @Insert("INSERT INTO borrow(username, book_name, borrow_time) VALUES(#{username}, #{bookName}, NOW())")
+    @Insert("INSERT INTO borrow(user_name, book_name, borrow_time) VALUES(#{username}, #{bookName}, NOW())")
     @Options(useGeneratedKeys = true, keyProperty = "id")
     int insert(Borrow borrow);
     

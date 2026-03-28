@@ -5,6 +5,7 @@ import cn.whpu.library.dto.BorrowRequest;
 import cn.whpu.library.entity.Book;
 import cn.whpu.library.service.BookService;
 import cn.whpu.library.service.BorrowService;
+import cn.whpu.library.utils.JwtUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
@@ -20,6 +21,9 @@ public class BookController {
     
     @Autowired
     private BorrowService borrowService;
+    
+    @Autowired
+    private JwtUtils jwtUtils;
     
     @GetMapping("/book")
     public ApiResponse<Map<String, Object>> getBooks(
@@ -87,27 +91,43 @@ public class BookController {
     }
     
     @PostMapping("/borrow")
-    public ApiResponse<Void> borrowBook(@RequestBody BorrowRequest request) {
+    public ApiResponse<Void> borrowBook(
+            @RequestBody BorrowRequest request,
+            @RequestHeader(value = "Authorization", required = false) String authorization) {
         try {
-            // 先检查图书是否存在且库存充足
-            Book book = bookService.getBookByName(request.getBookName());
-            if (book == null || book.getStock() <= 0) {
-                return ApiResponse.error("借书失败，库存不足或图书不存在");
+            // 从 token 中获取用户信息
+            String userName = extractUsernameFromToken(authorization);
+            if (userName == null) {
+                return ApiResponse.error("未登录或 token 已过期");
             }
             
-            // 减少库存
-            if (!bookService.borrowBook(request.getBookName())) {
-                return ApiResponse.error("借书失败");
-            }
-            
-            // 创建借阅记录
-            if (!borrowService.createBorrow(request.getUserName(), request.getBookName())) {
-                return ApiResponse.error("创建借阅记录失败");
-            }
+            // 执行借书操作（包含事务）
+            borrowService.borrowBookTransaction(userName, request.getBookName());
             
             return ApiResponse.success(null);
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
+            // 业务异常，直接返回错误信息
             return ApiResponse.error(e.getMessage());
+        } catch (Exception e) {
+            // 其他异常，事务会自动回滚
+            e.printStackTrace();
+            return ApiResponse.error("借书失败：" + e.getMessage());
+        }
+    }
+    
+    // 从 Authorization header 中解析 token 获取用户名
+    private String extractUsernameFromToken(String authorization) {
+        if (authorization == null || !authorization.startsWith("Bearer ")) {
+            return null;
+        }
+        
+        String token = authorization.substring(7);
+        
+        try {
+            return jwtUtils.extractUsername(token);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return null;
         }
     }
     

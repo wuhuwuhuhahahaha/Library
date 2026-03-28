@@ -2,13 +2,11 @@ package cn.whpu.library.service;
 
 import cn.whpu.library.entity.User;
 import cn.whpu.library.mapper.UserMapper;
+import cn.whpu.library.utils.JwtUtils;
 import cn.hutool.crypto.SecureUtil;
-import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.SignatureAlgorithm;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -19,7 +17,11 @@ public class UserService {
     @Autowired
     private UserMapper userMapper;
     
-    private static final String JWT_SECRET = "library-secret-key-2026";
+    @Autowired
+    private JwtUtils jwtUtils;
+    
+    @Autowired
+    private RedisCacheService redisCache;
     
     public User register(String username, String password) {
         User existingUser = userMapper.findByUsername(username);
@@ -52,37 +54,73 @@ public class UserService {
     public String generateToken(User user) {
         Map<String, Object> claims = new HashMap<>();
         claims.put("userId", user.getId());
-        claims.put("username", user.getUsername());
+        claims.put("name", user.getUsername());
         
-        return Jwts.builder()
-                .setClaims(claims)
-                .setSubject(user.getUsername())
-                .setIssuedAt(new Date())
-                .setExpiration(new Date(System.currentTimeMillis() + 24 * 60 * 60 * 1000))
-                .signWith(SignatureAlgorithm.HS256, JWT_SECRET)
-                .compact();
+        return jwtUtils.generateToken(user.getUsername(), claims);
     }
     
     public List<User> findAll() {
-        return userMapper.findAll();
+        String cacheKey = "user:all";
+        
+        // 先从 Redis 获取缓存
+        @SuppressWarnings("unchecked")
+        List<User> cachedUsers = (List<User>) redisCache.get(cacheKey);
+        if (cachedUsers != null) {
+            return cachedUsers;
+        }
+        
+        // 缓存未命中，从数据库查询并写入缓存
+        List<User> users = userMapper.findAll();
+        redisCache.set(cacheKey, users, 300); // 缓存 5 分钟
+        return users;
     }
     
     public List<User> findByKeyword(String keyword) {
-        return userMapper.findByKeyword(keyword);
+        String cacheKey = "user:keyword:" + keyword;
+        
+        // 先从 Redis 获取缓存
+        @SuppressWarnings("unchecked")
+        List<User> cachedUsers = (List<User>) redisCache.get(cacheKey);
+        if (cachedUsers != null) {
+            return cachedUsers;
+        }
+        
+        // 缓存未命中，从数据库查询并写入缓存
+        List<User> users = userMapper.findByKeyword(keyword);
+        redisCache.set(cacheKey, users, 300); // 缓存 5 分钟
+        return users;
     }
     
     public boolean update(User user) {
         if (user.getPassword() == null || user.getPassword().isEmpty()) {
             // 不更新密码，只更新用户名
-            return userMapper.updateUsername(user) > 0;
+            boolean result = userMapper.updateUsername(user) > 0;
+            if (result) {
+                // 清除相关缓存
+                redisCache.delete("user:all");
+                redisCache.delete("user:id:" + user.getId());
+            }
+            return result;
         } else {
             // 加密密码
             user.setPassword(SecureUtil.md5(user.getPassword()));
-            return userMapper.update(user) > 0;
+            boolean result = userMapper.update(user) > 0;
+            if (result) {
+                // 清除相关缓存
+                redisCache.delete("user:all");
+                redisCache.delete("user:id:" + user.getId());
+            }
+            return result;
         }
     }
     
     public boolean deleteById(Long id) {
-        return userMapper.deleteById(id) > 0;
+        boolean result = userMapper.deleteById(id) > 0;
+        if (result) {
+            // 清除相关缓存
+            redisCache.delete("user:all");
+            redisCache.delete("user:id:" + id);
+        }
+        return result;
     }
 }
