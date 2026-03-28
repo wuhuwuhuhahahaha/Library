@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.Date;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 @Service
@@ -60,5 +61,28 @@ public class UserService {
                 .setExpiration(new Date(System.currentTimeMillis() + 24 * 60 * 60 * 1000))
                 .signWith(SignatureAlgorithm.HS256, JWT_SECRET)
                 .compact();
+    }
+    
+    public List<User> findAll() {
+        return userMapper.findAll();
+    }
+    
+    public List<User> findByKeyword(String keyword) {
+        return userMapper.findByKeyword(keyword);
+    }
+    
+    public boolean update(User user) {
+        if (user.getPassword() == null || user.getPassword().isEmpty()) {
+            // 不更新密码，只更新用户名
+            return userMapper.updateUsername(user) > 0;
+        } else {
+            // 加密密码
+            user.setPassword(SecureUtil.md5(user.getPassword()));
+            return userMapper.update(user) > 0;
+        }
+    }
+    
+    public boolean deleteById(Long id) {
+        return userMapper.deleteById(id) > 0;
     }
 }
